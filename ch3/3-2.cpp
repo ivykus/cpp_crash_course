@@ -24,11 +24,9 @@ int main() {
 
   write_to(lower, lower_len, 'd', 3);
   write_to(upper, upper_len, 'D', 3);
-  char letter_d = read_from(lower, lower_len, 3);
-  printf("lower[3] = %c\n", letter_d);
+  [[maybe_unused]] char letter_d = read_from(lower, lower_len, 3);
 
-  char letter_D = read_from(upper_ptr, upper_len, 3);
-  printf("upper[3] = %c\n", letter_D);
+  [[maybe_unused]]char letter_D = read_from(upper_ptr, upper_len, 3);
 
   printf("lower: %s\nupper: %s\n", lower, upper);
   if (write_to(lower, lower_len, 'g', 7) != -1) {
