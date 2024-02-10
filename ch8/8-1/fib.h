@@ -1,3 +1,5 @@
+#ifndef FIBONACCI_H
+#define FIBONACCI_H
 class FibonacciIterator {
 private:
   int prev{1};
@@ -21,3 +23,5 @@ public:
 
   int end() const;
 };
+
+#endif
