@@ -1,60 +1,64 @@
 #include "../autobrake.h"
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
+using ::testing::_;
+using ::testing::A;
+using ::testing::DoubleEq;
+using ::testing::Field;
+using ::testing::Invoke;
+using ::testing::NiceMock;
+using ::testing::StrictMock;
+
 struct MockServiceBus : IServiceBus {
-  void publish(const BrakeCommand &cmd) override {
-    commands_published++;
-    last_command = cmd;
-  }
-  void subscribe(SpeedUpdateCallback cb) override {
-    speed_update_callback = cb;
-  }
-  void subscribe(CarDetectedCallback cb) override {
-    car_detected_callback = cb;
-  }
-  BrakeCommand last_command{};
-  int commands_published{};
-  SpeedUpdateCallback speed_update_callback{};
-  CarDetectedCallback car_detected_callback{};
+  MOCK_METHOD1(publish, void(const BrakeCommand &));
+  MOCK_METHOD1(subscribe, void(SpeedUpdateCallback));
+  MOCK_METHOD1(subscribe, void(CarDetectedCallback));
 };
 
-struct AutoBrakeTest : ::testing::Test {
-  MockServiceBus bus{};
-  AutoBrake ab{bus}; 
+struct NiceAutoBrakeTest : ::testing::Test {
+  NiceMock<MockServiceBus> bus;
+  AutoBrake auto_brake{bus};
 };
 
-TEST_F(AutoBrakeTest, InitialSpeedIsZero) {
-  ASSERT_DOUBLE_EQ(0, ab.get_speed_mps());
+struct StrictAutoBrakeTest : ::testing::Test {
+  StrictAutoBrakeTest() {
+    EXPECT_CALL(bus, subscribe(A<CarDetectedCallback>()))
+        .Times(1)
+        .WillOnce(Invoke([this](const auto &x) { car_detected_callback = x; }));
+    EXPECT_CALL(bus, subscribe(A<SpeedUpdateCallback>()))
+        .Times(1)
+        .WillOnce(Invoke([this](const auto &x) { speed_update_callback = x; }));
+    ;
+  }
+  CarDetectedCallback car_detected_callback;
+  SpeedUpdateCallback speed_update_callback;
+  StrictMock<MockServiceBus> bus;
+};
+
+TEST_F(NiceAutoBrakeTest, initial_speed_is_zero) {
+  ASSERT_DOUBLE_EQ(auto_brake.get_speed_mps(), 0L);
 }
 
-TEST_F(AutoBrakeTest, InitialSensitivityIsFive) {
-  ASSERT_DOUBLE_EQ(5, ab.get_collision_threshold_s());
+TEST_F(NiceAutoBrakeTest, InitialSensitivityIsFive) {
+  ASSERT_DOUBLE_EQ(5, auto_brake.get_collision_threshold_s());
 }
 
-TEST_F(AutoBrakeTest, SencitivityGreaterThanOne) {
-  ASSERT_ANY_THROW(ab.set_collision_threshold_s(0.5));
+TEST_F(NiceAutoBrakeTest, SensitivityGreaterThanOne) {
+  ASSERT_ANY_THROW(auto_brake.set_collision_threshold_s(0.5L));
 }
-
-TEST_F(AutoBrakeTest, SpeedIsSaved) {
-  bus.speed_update_callback(SpeedUpdate{100});
-  ASSERT_DOUBLE_EQ(100, ab.get_speed_mps());
-  bus.speed_update_callback(SpeedUpdate{50});
-  ASSERT_DOUBLE_EQ(50, ab.get_speed_mps());
-  bus.speed_update_callback(SpeedUpdate{0});
-  ASSERT_DOUBLE_EQ(0, ab.get_speed_mps());
+TEST_F(StrictAutoBrakeTest, NoAlertWhenNotImminent) {
+  AutoBrake auto_brake{bus};
+  auto_brake.set_collision_threshold_s(2L);
+  speed_update_callback(SpeedUpdate{100L});
+  car_detected_callback(CarDetected{1000L, 50L});
 }
-
-TEST_F(AutoBrakeTest, NoAlertWhenNotImminent) {
-  ab.set_collision_threshold_s(2L);
-  bus.speed_update_callback(SpeedUpdate{100});
-  bus.car_detected_callback(CarDetected{1000, 50});
-  ASSERT_EQ(0, bus.commands_published);
-}
-
-TEST_F(AutoBrakeTest, AlertWhenImminent) {
-  ab.set_collision_threshold_s(10L);
-  bus.speed_update_callback(SpeedUpdate{100});
-  bus.car_detected_callback(CarDetected{100, 0});
-  ASSERT_EQ(1, bus.commands_published);
-  ASSERT_DOUBLE_EQ(1, bus.last_command.time_to_collision_s);
+TEST_F(StrictAutoBrakeTest, AlertWhenImminent) {
+  EXPECT_CALL(bus, publish(
+      Field(&BrakeCommand::time_to_collision_s, DoubleEq(1L))
+  )).Times(1);
+  AutoBrake auto_brake{bus};
+  auto_brake.set_collision_threshold_s(10L);
+  speed_update_callback(SpeedUpdate{100L});
+  car_detected_callback(CarDetected{100L, 0L});
 }

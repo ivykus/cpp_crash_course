@@ -25,6 +25,7 @@ target_sources(autobrake-test
 
 target_link_libraries(autobrake-test 
     GTest::gtest_main 
+    GTest::gmock
 )
 
 include(GoogleTest)
