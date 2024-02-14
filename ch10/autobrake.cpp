@@ -1,9 +1,15 @@
 #include "autobrake.h"
 
-AutoBrake::AutoBrake(IServiceBus &bus) : collision_threshold_s{5}, speed_mps{} {
+AutoBrake::AutoBrake(IServiceBus &bus)
+    : collision_threshold_s{5}, speed_mps{},
+      last_speed_limit_mps{Initial_speed_limit_mps} {
 
-  bus.subscribe(
-      [this](const SpeedUpdate &update) { speed_mps = update.velocity_mps; });
+  bus.subscribe([this, &bus](const SpeedUpdate &update) {
+    speed_mps = update.velocity_mps;
+    if (speed_mps > last_speed_limit_mps) {
+      bus.publish(BrakeCommand{0});
+    }
+  });
 
   bus.subscribe([this, &bus](const CarDetected &cd) {
     const auto relative_velocity_mps = speed_mps - cd.velocity_mps;
@@ -11,6 +17,13 @@ AutoBrake::AutoBrake(IServiceBus &bus) : collision_threshold_s{5}, speed_mps{} {
     if (time_to_collision_s > 0 &&
         time_to_collision_s <= collision_threshold_s) {
       bus.publish(BrakeCommand{time_to_collision_s});
+    }
+  });
+
+  bus.subscribe([this, &bus](const SpeedLimitDetected &sl) {
+    last_speed_limit_mps = sl.speed_mps;
+    if (speed_mps > last_speed_limit_mps) {
+      bus.publish(BrakeCommand{0});
     }
   });
 }
